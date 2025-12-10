@@ -1,5 +1,5 @@
 import { FLOOD_ZONES } from '../components/FloodMap';
-import { FloodZone } from '../types';
+import { FloodZone, FloodPoint } from '../types';
 
 type LatLng = { lat: number; lng: number };
 type RiskLevel = 'low' | 'medium' | 'high' | 'severe';
@@ -36,6 +36,52 @@ const zonesToMultiPolygon = (zones: FloodZone[], minRisk: RiskLevel) => {
   return {
     type: 'MultiPolygon',
     coordinates: polygons,
+  } as const;
+};
+
+const pointsToPolygons = (points: FloodPoint[], radiusMeters = 200) => {
+  const polygons: [number, number][][] = [];
+  const segments = 12;
+  points.forEach((p) => {
+    const lat = p.lat;
+    const lng = p.lng;
+    const dLat = radiusMeters / 111000; // deg
+    const dLng = radiusMeters / (111000 * Math.cos((lat * Math.PI) / 180));
+    const ring: [number, number][] = [];
+    for (let i = 0; i < segments; i++) {
+      const theta = (2 * Math.PI * i) / segments;
+      const latOffset = Math.sin(theta) * dLat;
+      const lngOffset = Math.cos(theta) * dLng;
+      ring.push([lng + lngOffset, lat + latOffset]);
+    }
+    ring.push(ring[0]);
+    polygons.push(ring);
+  });
+  return polygons;
+};
+
+const buildAvoidMultiPolygon = (params: {
+  zones: FloodZone[];
+  minRisk: RiskLevel;
+  includeAllPoints?: boolean;
+  points?: FloodPoint[];
+}) => {
+  const base = zonesToMultiPolygon(params.zones, params.minRisk);
+  const pointPolygons =
+    params.includeAllPoints && params.points && params.points.length
+      ? pointsToPolygons(params.points)
+      : [];
+
+  const combined: [number, number][][] = [];
+  if (base?.coordinates?.length) combined.push(...base.coordinates);
+  if (pointPolygons.length) {
+    pointPolygons.forEach((ring) => combined.push([ring]));
+  }
+
+  if (!combined.length) return null;
+  return {
+    type: 'MultiPolygon',
+    coordinates: combined,
   } as const;
 };
 
@@ -109,6 +155,8 @@ export const getRouteORS = async (params: {
   from: LatLng;
   to: LatLng;
   minRisk?: RiskLevel;
+  includeAllPoints?: boolean;
+  points?: FloodPoint[];
 }): Promise<ORSRouteResult> => {
   if (!ORS_API_KEY) throw new Error('Thiếu ORS API key (VITE_ORS_API_KEY).');
 
@@ -122,7 +170,12 @@ export const getRouteORS = async (params: {
     options: {},
   };
 
-  const avoid = zonesToMultiPolygon(FLOOD_ZONES, params.minRisk || 'high');
+  const avoid = buildAvoidMultiPolygon({
+    zones: FLOOD_ZONES,
+    minRisk: params.minRisk || 'high',
+    includeAllPoints: params.includeAllPoints,
+    points: params.points,
+  });
   if (avoid) body.options.avoid_polygons = avoid;
 
   const res = await fetch(ORS_URL, {

@@ -32,7 +32,8 @@ const App: React.FC = () => {
   const [toSuggest, setToSuggest] = useState<GeoSuggestItem[]>([]);
   const [fromLoading, setFromLoading] = useState(false);
   const [toLoading, setToLoading] = useState(false);
-  const [avoidLevel, setAvoidLevel] = useState<'high' | 'severe'>('high');
+  const [avoidLevel, setAvoidLevel] = useState<'high' | 'severe' | 'all'>('high');
+  const [routePanelOpen, setRoutePanelOpen] = useState(true);
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [floodPoints, setFloodPoints] = useState<FloodPoint[]>([]);
@@ -480,6 +481,13 @@ const App: React.FC = () => {
     setFromSuggest([]);
   };
 
+  const handleClearRoute = () => {
+    setRouteCoords(null);
+    setRouteEndpoints({});
+    setRouteMeta(null);
+    setRouteError(null);
+  };
+
   const handleSwapRoute = () => {
     setRouteError(null);
     setFromInput(toInput);
@@ -508,7 +516,13 @@ const App: React.FC = () => {
 
     setRouteLoading(true);
     try {
-      const res = await getRouteORS({ from, to, minRisk: avoidLevel });
+      const res = await getRouteORS({ 
+        from, 
+        to, 
+        minRisk: avoidLevel === 'all' ? 'low' : avoidLevel, 
+        includeAllPoints: avoidLevel === 'all',
+        points: avoidLevel === 'all' ? floodPoints : undefined,
+      });
       setRouteCoords(res.line);
       setRouteEndpoints({ from, to });
       setRouteMeta({ distance: res.distance, duration: res.duration });
@@ -542,6 +556,20 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#F0F4F8] overflow-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900">
+      <style>
+        {`
+          .route-neon {
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            filter: drop-shadow(0 0 6px rgba(124,58,237,0.7));
+          }
+          .route-neon-glow {
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            filter: drop-shadow(0 0 12px rgba(34,211,238,0.9));
+          }
+        `}
+      </style>
       {/* Sidebar Overlay */}
       {sidebarOpen && (
         <div 
@@ -949,122 +977,175 @@ const App: React.FC = () => {
                />
                
                {/* Route Planner */}
-               <div className="absolute top-6 right-6 z-[400] bg-white/90 backdrop-blur-md shadow-2xl rounded-2xl p-5 border border-white/50 w-full max-w-md space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Tìm đường né ngập (ORS)</h4>
-                    <button 
-                      onClick={handleSwapRoute}
-                      className="text-xs text-blue-600 font-bold hover:underline"
-                    >
-                      Đổi A/B
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Điểm bắt đầu</label>
-                    <div className="relative">
-                      <div className="flex gap-2">
-                        <input 
-                          value={fromInput}
-                          onChange={(e) => {
-                            setFromInput(e.target.value);
-                            setFromCoords(null);
-                          }}
-                          placeholder="Nhập địa chỉ hoặc lat,lng"
-                          className="flex-1 text-sm px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
+               <div className="absolute top-6 right-6 z-[400] w-full max-w-md">
+                 <div className={`bg-[#0f172a]/80 text-white backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/40 rounded-3xl transition-all duration-300 ${routePanelOpen ? 'p-5 space-y-4 opacity-100 translate-y-0' : 'p-3 opacity-90 translate-y-0'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <h4 className="font-bold text-sm uppercase tracking-wider">Tìm đường né ngập (ORS)</h4>
                         <button 
-                          onClick={handleUseCurrentLocation}
-                          className="px-3 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100"
+                          onClick={() => setRoutePanelOpen(!routePanelOpen)}
+                          className="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 transition-all"
+                          title={routePanelOpen ? "Thu gọn" : "Mở ra"}
                         >
-                          Vị trí tôi
+                          {routePanelOpen ? (
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          )}
                         </button>
                       </div>
-                      {fromSuggest.length > 0 && (
-                        <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-slate-200 max-h-52 overflow-auto z-[450]">
-                          {fromSuggest.map((s, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                setFromInput(s.label);
-                                setFromCoords({ lat: s.lat, lng: s.lng });
-                                setFromSuggest([]);
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
-                            >
-                              {s.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={handleSwapRoute}
+                          className="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 transition-all"
+                          title="Đổi A/B"
+                        >
+                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 7l-3-3m0 0l-3 3m3-3v12m0 0l3-3m-3 3l-3-3" />
+                          </svg>
+                        </button>
+                        <button 
+                          onClick={handleClearRoute}
+                          className="p-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 transition-all"
+                          title="Xóa đường đi"
+                        >
+                          <svg className="w-4 h-4 text-rose-100" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Điểm đến</label>
-                    <div className="relative">
-                      <input 
-                        value={toInput}
-                        onChange={(e) => {
-                          setToInput(e.target.value);
-                          setToCoords(null);
-                        }}
-                        placeholder="Nhập địa chỉ hoặc lat,lng"
-                        className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      {toSuggest.length > 0 && (
-                        <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-slate-200 max-h-52 overflow-auto z-[450]">
-                          {toSuggest.map((s, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                setToInput(s.label);
-                                setToCoords({ lat: s.lat, lng: s.lng });
-                                setToSuggest([]);
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
-                            >
-                              {s.label}
-                            </button>
-                          ))}
+                    {routePanelOpen && (
+                    <>
+
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-slate-200">Điểm bắt đầu</label>
+                      <div className="relative">
+                        <div className="flex gap-2">
+                          <input 
+                            value={fromInput}
+                            onChange={(e) => {
+                              setFromInput(e.target.value);
+                              setFromCoords(null);
+                            }}
+                            placeholder="Nhập địa chỉ hoặc lat,lng"
+                            className="flex-1 text-sm px-3 py-2 rounded-2xl border border-white/10 bg-white/10 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                          />
+                          <button 
+                            onClick={handleUseCurrentLocation}
+                            className="px-3 py-2 rounded-2xl text-xs font-semibold bg-cyan-500/20 text-cyan-100 border border-cyan-400/40 hover:bg-cyan-500/30"
+                          >
+                            Vị trí tôi
+                          </button>
                         </div>
-                      )}
+                        {fromSuggest.length > 0 && (
+                          <div className="absolute left-0 right-0 mt-1 bg-slate-900/90 text-white rounded-2xl shadow-2xl border border-white/10 max-h-52 overflow-auto z-[450]">
+                            {fromSuggest.map((s, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setFromInput(s.label);
+                                  setFromCoords({ lat: s.lat, lng: s.lng });
+                                  setFromSuggest([]);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-white/10"
+                              >
+                                {s.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-3">
-                    <label className="text-xs font-semibold text-slate-600">Mức tránh</label>
-                    <select
-                      value={avoidLevel}
-                      onChange={(e) => setAvoidLevel(e.target.value as 'high' | 'severe')}
-                      className="text-sm px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="high">Tránh High/Severe</option>
-                      <option value="severe">Chỉ tránh Severe</option>
-                    </select>
-                    {routeMeta?.distance && (
-                      <span className="ml-auto text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
-                        {(routeMeta.distance / 1000).toFixed(1)} km
-                      </span>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-slate-200">Điểm đến</label>
+                      <div className="relative">
+                        <input 
+                          value={toInput}
+                          onChange={(e) => {
+                            setToInput(e.target.value);
+                            setToCoords(null);
+                          }}
+                          placeholder="Nhập địa chỉ hoặc lat,lng"
+                          className="w-full text-sm px-3 py-2 rounded-2xl border border-white/10 bg-white/10 text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                        />
+                        {toSuggest.length > 0 && (
+                          <div className="absolute left-0 right-0 mt-1 bg-slate-900/90 text-white rounded-2xl shadow-2xl border border-white/10 max-h-52 overflow-auto z-[450]">
+                            {toSuggest.map((s, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setToInput(s.label);
+                                  setToCoords({ lat: s.lat, lng: s.lng });
+                                  setToSuggest([]);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-white/10"
+                              >
+                                {s.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-slate-200">Mức tránh</label>
+                      <div className="grid grid-cols-3 gap-2 bg-white/5 p-1 rounded-2xl border border-white/10">
+                        {[
+                          { key: 'severe', label: 'Severe' },
+                          { key: 'high', label: 'High+' },
+                          { key: 'all', label: 'Tất cả' },
+                        ].map(opt => (
+                          <button
+                            key={opt.key}
+                            onClick={() => setAvoidLevel(opt.key as any)}
+                            className={`text-xs font-semibold py-2 rounded-xl transition-all ${
+                              avoidLevel === opt.key 
+                                ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30' 
+                                : 'text-slate-200 hover:bg-white/10'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {routeError && (
+                      <div className="text-xs text-rose-100 bg-rose-500/20 border border-rose-400/40 rounded-xl px-3 py-2">
+                        {routeError}
+                      </div>
                     )}
-                  </div>
 
-                  {routeError && (
-                    <div className="text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">
-                      {routeError}
-                    </div>
-                  )}
+                    <button
+                      onClick={handlePlanRoute}
+                      disabled={routeLoading}
+                      className={`w-full py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                        routeLoading ? 'bg-cyan-500/30 text-cyan-100 cursor-not-allowed' : 'bg-cyan-500 text-white hover:bg-cyan-600 shadow-lg shadow-cyan-500/30'
+                      }`}
+                    >
+                      {routeLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {routeLoading ? 'Đang tìm đường...' : 'Tìm đường né ngập'}
+                    </button>
 
-                  <button
-                    onClick={handlePlanRoute}
-                    disabled={routeLoading}
-                    className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                      routeLoading ? 'bg-blue-100 text-blue-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20'
-                    }`}
-                  >
-                    {routeLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {routeLoading ? 'Đang tìm đường...' : 'Tìm đường né ngập'}
-                  </button>
+                    {routeMeta?.distance && (
+                      <div className="flex items-center justify-between bg-white/5 border border-white/10 rounded-2xl px-3 py-2 text-sm text-slate-100">
+                        <span className="font-semibold">Tóm tắt</span>
+                        <span className="text-xs font-medium text-cyan-200">
+                          {(routeMeta.distance / 1000).toFixed(1)} km {routeMeta.duration ? `• ${(routeMeta.duration / 60).toFixed(0)} phút` : ''}
+                        </span>
+                      </div>
+                    )}
+                    </>
+                    )}
+                 </div>
                </div>
 
                <div className="absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-md shadow-lg rounded-2xl p-4 border border-white/50 w-[240px]">

@@ -800,10 +800,19 @@ export const FloodMap: React.FC<FloodMapProps> = ({ points, routeCoords, routeEn
             <Polyline
               positions={routeCoords.map(p => [p.lat, p.lng])}
               pathOptions={{
-                color: '#22c55e',
+                color: '#22d3ee',
+                weight: 10,
+                opacity: 0.25,
+                className: 'route-neon-glow'
+              }}
+            />
+            <Polyline
+              positions={routeCoords.map(p => [p.lat, p.lng])}
+              pathOptions={{
+                color: '#7c3aed',
                 weight: 6,
-                opacity: 0.9,
-                dashArray: '6, 8'
+                opacity: 0.95,
+                className: 'route-neon'
               }}
             />
             {routeEndpoints?.from && (
@@ -812,12 +821,15 @@ export const FloodMap: React.FC<FloodMapProps> = ({ points, routeCoords, routeEn
                 icon={L.divIcon({
                   className: 'route-pin-start',
                   html: `
-                    <div class="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-lg border border-white">
-                      A
+                    <div style="position: relative; width: 32px; height: 32px;">
+                      <div style="position:absolute; inset:0; border-radius: 50%; background: rgba(34,197,94,0.2); box-shadow: 0 0 10px rgba(34,197,94,0.7);"></div>
+                      <div style="position:absolute; inset:4px; border-radius: 50%; background: #10b981; border: 2px solid white; display:flex; align-items:center; justify-content:center;">
+                        <div style="width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 10px solid white; transform: translateX(2px);"></div>
+                      </div>
                     </div>
                   `,
-                  iconSize: [24, 24],
-                  iconAnchor: [12, 12]
+                  iconSize: [32, 32],
+                  iconAnchor: [16, 16]
                 })}
               />
             )}
@@ -827,12 +839,15 @@ export const FloodMap: React.FC<FloodMapProps> = ({ points, routeCoords, routeEn
                 icon={L.divIcon({
                   className: 'route-pin-end',
                   html: `
-                    <div class="bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-lg border border-white">
-                      B
+                    <div style="position: relative; width: 32px; height: 32px;">
+                      <div style="position:absolute; inset:0; border-radius: 50%; background: rgba(59,130,246,0.2); box-shadow: 0 0 10px rgba(59,130,246,0.7);"></div>
+                      <div style="position:absolute; inset:4px; border-radius: 50%; background: #2563eb; border: 2px solid white; display:flex; align-items:center; justify-content:center;">
+                        <div style="width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-right: 10px solid white; transform: translateX(-2px);"></div>
+                      </div>
                     </div>
                   `,
-                  iconSize: [24, 24],
-                  iconAnchor: [12, 12]
+                  iconSize: [32, 32],
+                  iconAnchor: [16, 16]
                 })}
               />
             )}
