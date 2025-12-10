@@ -8,6 +8,7 @@ import { Chatbot } from './components/Chatbot';
 import { ReportModal } from './components/ReportModal';
 import { WeatherPage } from './components/WeatherPage';
 import { api } from './services/api';
+import { getRouteORS, geocodeSuggest, GeoSuggestItem } from './services/route';
 import { DashboardStats, FloodPoint, Prediction, WeatherResponse, RiskAnalysis, Report } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 
@@ -18,6 +19,20 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [routeCoords, setRouteCoords] = useState<{ lat: number; lng: number }[] | null>(null);
+  const [routeEndpoints, setRouteEndpoints] = useState<{ from?: { lat: number; lng: number }, to?: { lat: number; lng: number } }>({});
+  const [routeMeta, setRouteMeta] = useState<{ distance?: number; duration?: number } | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
+  const [fromInput, setFromInput] = useState('');
+  const [toInput, setToInput] = useState('');
+  const [fromCoords, setFromCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [toCoords, setToCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [fromSuggest, setFromSuggest] = useState<GeoSuggestItem[]>([]);
+  const [toSuggest, setToSuggest] = useState<GeoSuggestItem[]>([]);
+  const [fromLoading, setFromLoading] = useState(false);
+  const [toLoading, setToLoading] = useState(false);
+  const [avoidLevel, setAvoidLevel] = useState<'high' | 'severe'>('high');
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [floodPoints, setFloodPoints] = useState<FloodPoint[]>([]);
@@ -243,6 +258,39 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Debounce geocoding suggestions
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      if (!fromInput || fromCoords) { setFromSuggest([]); setFromLoading(false); return; }
+      setFromLoading(true);
+      try {
+        const res = await geocodeSuggest(fromInput);
+        setFromSuggest(res);
+      } catch (e) {
+        setFromSuggest([]);
+      } finally {
+        setFromLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [fromInput, fromCoords]);
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      if (!toInput || toCoords) { setToSuggest([]); setToLoading(false); return; }
+      setToLoading(true);
+      try {
+        const res = await geocodeSuggest(toInput);
+        setToSuggest(res);
+      } catch (e) {
+        setToSuggest([]);
+      } finally {
+        setToLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [toInput, toCoords]);
+
   // WebSocket Connection
   useEffect(() => {
     console.log('[WS] Attempting connection to', WS_URL);
@@ -404,6 +452,76 @@ const App: React.FC = () => {
       setAnalysisReport(null);
       setAnalysisResult(null);
   }
+
+  const parseLatLng = (text: string) => {
+    const parts = text.split(',').map(p => p.trim());
+    if (parts.length !== 2) return null;
+    const lat = parseFloat(parts[0]);
+    const lng = parseFloat(parts[1]);
+    if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+    return { lat, lng };
+  };
+
+  useEffect(() => {
+    if (userLocation && !fromInput) {
+      setFromInput(`${userLocation.lat.toFixed(6)},${userLocation.lng.toFixed(6)}`);
+      setFromCoords(userLocation);
+    }
+  }, [userLocation, fromInput]);
+
+  const handleUseCurrentLocation = () => {
+    if (!userLocation) {
+      setRouteError('Chưa xác định được vị trí hiện tại.');
+      return;
+    }
+    setRouteError(null);
+    setFromInput(`${userLocation.lat.toFixed(6)},${userLocation.lng.toFixed(6)}`);
+    setFromCoords(userLocation);
+    setFromSuggest([]);
+  };
+
+  const handleSwapRoute = () => {
+    setRouteError(null);
+    setFromInput(toInput);
+    setToInput(fromInput);
+    setFromCoords(toCoords);
+    setToCoords(fromCoords);
+    setFromSuggest([]);
+    setToSuggest([]);
+  };
+
+  const resolvePoint = (text: string, picked: { lat: number; lng: number } | null) => {
+    if (picked) return picked;
+    const parsed = parseLatLng(text);
+    return parsed;
+  };
+
+  const handlePlanRoute = async () => {
+    setRouteError(null);
+    const from = resolvePoint(fromInput, fromCoords);
+    const to = resolvePoint(toInput, toCoords);
+
+    if (!from || !to) {
+      setRouteError('Vui lòng nhập địa chỉ hoặc tọa độ hợp lệ (lat,lng).');
+      return;
+    }
+
+    setRouteLoading(true);
+    try {
+      const res = await getRouteORS({ from, to, minRisk: avoidLevel });
+      setRouteCoords(res.line);
+      setRouteEndpoints({ from, to });
+      setRouteMeta({ distance: res.distance, duration: res.duration });
+      setFromSuggest([]);
+      setToSuggest([]);
+    } catch (e: any) {
+      setRouteCoords(null);
+      setRouteMeta(null);
+      setRouteError(e.message || 'Không thể tìm đường né ngập.');
+    } finally {
+      setRouteLoading(false);
+    }
+  };
 
   const riskLevel = prediction?.risk_level || 'Low';
   const riskColor = riskLevel.includes('High') || riskLevel.includes('Danger') || riskLevel.includes('CAO') ? 'text-rose-500' : riskLevel.includes('Medium') || riskLevel.includes('Warning') || riskLevel.includes('TRUNG BÌNH') ? 'text-amber-500' : 'text-emerald-500';
@@ -824,8 +942,131 @@ const App: React.FC = () => {
             </div>
           ) : activeTab === 'map' ? (
             <div className="h-[calc(100vh-8rem)] rounded-[2rem] overflow-hidden shadow-2xl shadow-slate-200/50 border border-slate-200 relative group">
-               <FloodMap points={floodPoints} />
+               <FloodMap 
+                 points={floodPoints} 
+                 routeCoords={routeCoords || undefined} 
+                 routeEndpoints={routeEndpoints} 
+               />
                
+               {/* Route Planner */}
+               <div className="absolute top-6 right-6 z-[400] bg-white/90 backdrop-blur-md shadow-2xl rounded-2xl p-5 border border-white/50 w-full max-w-md space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider">Tìm đường né ngập (ORS)</h4>
+                    <button 
+                      onClick={handleSwapRoute}
+                      className="text-xs text-blue-600 font-bold hover:underline"
+                    >
+                      Đổi A/B
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Điểm bắt đầu</label>
+                    <div className="relative">
+                      <div className="flex gap-2">
+                        <input 
+                          value={fromInput}
+                          onChange={(e) => {
+                            setFromInput(e.target.value);
+                            setFromCoords(null);
+                          }}
+                          placeholder="Nhập địa chỉ hoặc lat,lng"
+                          className="flex-1 text-sm px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button 
+                          onClick={handleUseCurrentLocation}
+                          className="px-3 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100"
+                        >
+                          Vị trí tôi
+                        </button>
+                      </div>
+                      {fromSuggest.length > 0 && (
+                        <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-slate-200 max-h-52 overflow-auto z-[450]">
+                          {fromSuggest.map((s, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                setFromInput(s.label);
+                                setFromCoords({ lat: s.lat, lng: s.lng });
+                                setFromSuggest([]);
+                              }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Điểm đến</label>
+                    <div className="relative">
+                      <input 
+                        value={toInput}
+                        onChange={(e) => {
+                          setToInput(e.target.value);
+                          setToCoords(null);
+                        }}
+                        placeholder="Nhập địa chỉ hoặc lat,lng"
+                        className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      {toSuggest.length > 0 && (
+                        <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-slate-200 max-h-52 overflow-auto z-[450]">
+                          {toSuggest.map((s, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                setToInput(s.label);
+                                setToCoords({ lat: s.lat, lng: s.lng });
+                                setToSuggest([]);
+                              }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-semibold text-slate-600">Mức tránh</label>
+                    <select
+                      value={avoidLevel}
+                      onChange={(e) => setAvoidLevel(e.target.value as 'high' | 'severe')}
+                      className="text-sm px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="high">Tránh High/Severe</option>
+                      <option value="severe">Chỉ tránh Severe</option>
+                    </select>
+                    {routeMeta?.distance && (
+                      <span className="ml-auto text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
+                        {(routeMeta.distance / 1000).toFixed(1)} km
+                      </span>
+                    )}
+                  </div>
+
+                  {routeError && (
+                    <div className="text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">
+                      {routeError}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handlePlanRoute}
+                    disabled={routeLoading}
+                    className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                      routeLoading ? 'bg-blue-100 text-blue-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20'
+                    }`}
+                  >
+                    {routeLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {routeLoading ? 'Đang tìm đường...' : 'Tìm đường né ngập'}
+                  </button>
+               </div>
+
                <div className="absolute bottom-6 left-6 z-[400] bg-white/90 backdrop-blur-md shadow-lg rounded-2xl p-4 border border-white/50 w-[240px]">
                   <h4 className="font-bold text-slate-800 mb-3 text-xs uppercase tracking-wider text-center">Chỉ dẫn bản đồ</h4>
                   <div className="space-y-2">
