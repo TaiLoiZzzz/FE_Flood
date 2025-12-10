@@ -1,0 +1,9 @@
+{
+  "name": "HCMC Flood Monitor",
+  "description": "Real-time flood monitoring and risk analysis system for Ho Chi Minh City.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera",
+    "microphone"
+  ]
+}
